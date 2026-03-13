@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Confidence Score Explainer</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#fff;--bg2:#f5f4f0;--bg3:#eeecea;--t1:#1a1a18;--t2:#5f5e5a;--t3:#888780;--b1:rgba(0,0,0,0.12);--b2:rgba(0,0,0,0.22);--purple:#7F77DD;--purple-d:#534AB7;--purple-l:#EEEDFE;--teal:#1D9E75;--teal-l:#E1F5EE;--red:#E24B4A;--red-l:#FCEBEB;--amber:#BA7517;--amber-l:#FAEEDA;--rm:8px;--rl:12px}
+  @media(prefers-color-scheme:dark){:root{--bg:#1c1c1a;--bg2:#252523;--bg3:#2e2e2b;--t1:#f0ede8;--t2:#b4b2a9;--t3:#888780;--b1:rgba(255,255,255,0.1);--b2:rgba(255,255,255,0.2);--purple:#9F99E8;--purple-d:#AFA9EC;--purple-l:#26215C;--teal:#5DCAA5;--teal-l:#04342C;--red:#F09595;--red-l:#501313;--amber:#EF9F27;--amber-l:#412402}}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--t1);min-height:100vh;padding:2rem 1rem}
+  .page{max-width:820px;margin:0 auto;background:var(--bg);border-radius:var(--rl);border:0.5px solid var(--b1);padding:2rem 2.5rem}
+  h1{font-size:20px;font-weight:500;margin-bottom:4px}
+  .sub{font-size:13px;color:var(--t2);margin-bottom:2rem}
+  .sl{font-size:10px;font-weight:500;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem}
+  @media(max-width:600px){.two-col{grid-template-columns:1fr}}
+  .input-card{background:var(--bg2);border-radius:var(--rl);padding:1.25rem}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:1rem}
+  .field:last-child{margin-bottom:0}
+  .field label{font-size:12px;color:var(--t2)}
+  select,input[type=number]{padding:8px 10px;border:0.5px solid var(--b2);border-radius:var(--rm);background:var(--bg);color:var(--t1);font-size:14px;width:100%}
+  select:focus,input:focus{outline:none;border-color:var(--purple)}
+  .score-display{text-align:center;padding:1.5rem 1rem}
+  .score-ring-wrap{position:relative;width:120px;height:120px;margin:0 auto 12px}
+  .score-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .score-big{font-size:32px;font-weight:500}
+  .score-label{font-size:11px;color:var(--t3)}
+  .score-grade{font-size:14px;font-weight:500;margin-bottom:4px}
+  .score-sub{font-size:12px;color:var(--t2)}
+  .factors{display:flex;flex-direction:column;gap:8px;margin-bottom:1.5rem}
+  .factor{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--rm);border:0.5px solid var(--b1)}
+  .factor-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+  .factor-body{flex:1}
+  .factor-name{font-size:12px;font-weight:500;margin-bottom:2px}
+  .factor-desc{font-size:11px;color:var(--t2);line-height:1.5}
+  .factor-bar{height:4px;border-radius:2px;margin-top:5px;background:var(--bg2);position:relative}
+  .factor-fill{height:4px;border-radius:2px;position:absolute;top:0;left:0;transition:width .4s}
+  .factor-delta{font-size:11px;font-weight:500;white-space:nowrap;flex-shrink:0}
+  .positive{color:var(--teal)}
+  .negative{color:var(--red)}
+  .neutral-col{color:var(--t3)}
+  .stakeholder-box{border:0.5px solid var(--b1);border-radius:var(--rl);padding:1rem 1.25rem;margin-bottom:1rem}
+  .sh-header{font-size:11px;color:var(--t3);margin-bottom:8px;display:flex;justify-content:space-between}
+  .copy-btn{font-size:11px;padding:3px 8px;border:0.5px solid var(--b2);border-radius:var(--rm);background:transparent;color:var(--t3);cursor:pointer}
+  .copy-btn:hover{color:var(--t1);background:var(--bg2)}
+  .sh-text{font-size:13px;line-height:1.7}
+  .divider{height:0.5px;background:var(--b1);margin:1.25rem 0}
+  .explainer{font-size:12px;color:var(--t2);line-height:1.7;background:var(--bg2);border-radius:var(--rl);padding:12px 14px}
+  .explainer strong{color:var(--t1);font-weight:500}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Confidence score explainer</h1>
+  <p class="sub">Model the factors behind a finding's confidence score and generate a stakeholder-ready explanation. Built on Groundedly's scoring logic.</p>
+
+  <div class="two-col">
+    <div class="input-card">
+      <div class="sl">Finding inputs</div>
+      <div class="field">
+        <label>Number of participants (n)</label>
+        <input type="number" id="nn" value="12" min="1" max="200" oninput="render()">
+      </div>
+      <div class="field">
+        <label>% who experienced this</label>
+        <input type="number" id="pct" value="67" min="0" max="100" oninput="render()">
+      </div>
+      <div class="field">
+        <label>Study type</label>
+        <select id="stype" onchange="render()">
+          <option value="formative">Formative (discovery)</option>
+          <option value="summative">Summative (benchmark)</option>
+          <option value="diary">Diary / longitudinal</option>
+          <option value="survey">Survey</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Evidence quality</label>
+        <select id="eq" onchange="render()">
+          <option value="direct">Direct observation</option>
+          <option value="self_report">Self-report only</option>
+          <option value="mixed" selected>Mixed (observed + report)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Consistency across participants</label>
+        <select id="cons" onchange="render()">
+          <option value="high" selected>High — similar pattern across all</option>
+          <option value="medium">Medium — some variation</option>
+          <option value="low">Low — mixed or contradictory</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Replicated in prior research?</label>
+        <select id="rep" onchange="render()">
+          <option value="yes">Yes — seen in previous study</option>
+          <option value="no" selected>No — first time observed</option>
+          <option value="partial">Partially / similar finding</option>
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <div class="score-display">
+        <div class="score-ring-wrap">
+          <canvas id="ring-chart" width="120" height="120"></canvas>
+          <div class="score-num">
+            <div class="score-big" id="score-num" style="color:var(--purple)">—</div>
+            <div class="score-label">/ 100</div>
+          </div>
+        </div>
+        <div class="score-grade" id="score-grade">—</div>
+        <div class="score-sub" id="score-sub">—</div>
+      </div>
+      <div class="explainer">
+        <strong>How this is scored:</strong> Base score from sample size and occurrence rate. Modifiers applied for evidence quality, consistency, study type, and replication. Final score is bounded to [10, 97] — no finding is ever "certain" or "worthless."
+      </div>
+    </div>
+  </div>
+
+  <div class="sl">Score breakdown</div>
+  <div class="factors" id="factors"></div>
+
+  <div class="divider"></div>
+
+  <div class="sl">Stakeholder explanation</div>
+  <div class="stakeholder-box">
+    <div class="sh-header">Ready to paste into a report or slide <button class="copy-btn" onclick="copyText()">copy</button></div>
+    <div class="sh-text" id="sh-text">—</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+let ringChart = null;
+
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v))}
+
+function render(){
+  const n = parseInt(document.getElementById('nn').value)||1;
+  const pct = parseFloat(document.getElementById('pct').value)||0;
+  const stype = document.getElementById('stype').value;
+  const eq = document.getElementById('eq').value;
+  const cons = document.getElementById('cons').value;
+  const rep = document.getElementById('rep').value;
+
+  const p = pct/100;
+
+  // Base: sample size contribution (log scale, 40 pts max)
+  const nScore = clamp(Math.log(n)/Math.log(60)*40, 5, 40);
+  // Base: occurrence rate (25 pts max — higher rate = more observable = more confident)
+  const rateScore = clamp(p * 25 * (p>0.5?1.2:1), 5, 25);
+
+  // Modifiers
+  const stypeMap = {formative:0, summative:5, diary:8, survey:-5};
+  const eqMap = {direct:8, mixed:0, self_report:-10};
+  const consMap = {high:10, medium:0, low:-12};
+  const repMap = {yes:12, partial:5, no:0};
+
+  const stypeDelta = stypeMap[stype]||0;
+  const eqDelta = eqMap[eq]||0;
+  const consDelta = consMap[cons]||0;
+  const repDelta = repMap[rep]||0;
+
+  const rawScore = nScore + rateScore + stypeDelta + eqDelta + consDelta + repDelta;
+  const finalScore = clamp(Math.round(rawScore), 10, 97);
+
+  document.getElementById('score-num').textContent = finalScore;
+
+  let grade, gradeSub, gradeColor;
+  if(finalScore>=80){grade='High confidence';gradeSub='Suitable for design decisions without caveats';gradeColor='var(--teal)'}
+  else if(finalScore>=60){grade='Moderate confidence';gradeSub='Use with a brief caveat about limitations';gradeColor='var(--purple)'}
+  else if(finalScore>=40){grade='Low confidence';gradeSub='Treat as a hypothesis, not a finding';gradeColor='var(--amber)'}
+  else{grade='Very low confidence';gradeSub='Requires replication before acting on it';gradeColor='var(--red)'}
+
+  document.getElementById('score-grade').textContent = grade;
+  document.getElementById('score-grade').style.color = gradeColor;
+  document.getElementById('score-sub').textContent = gradeSub;
+
+  drawRing(finalScore, gradeColor);
+
+  const factors = [
+    {name:'Sample size (n = '+n+')', desc: n<8?'Small sample — limits reliability of rate estimates':n<20?'Moderate sample — adequate for formative':'Strong sample — rate estimates are more stable', delta:Math.round(nScore), fill:nScore/40, color:'var(--purple)'},
+    {name:'Occurrence rate ('+pct+'%)', desc: p<0.20?'Low occurrence — could be an anomaly or niche issue':p<0.50?'Moderate occurrence — meaningful signal':p>=0.50?'High occurrence — experienced by majority of participants':'', delta:Math.round(rateScore), fill:rateScore/25, color:'var(--purple)'},
+    {name:'Study type', desc:{formative:'Formative studies are exploratory — findings directional but not benchmark-grade',summative:'Summative studies provide stronger claim to representativeness',diary:'Longitudinal data strengthens ecological validity',survey:'Survey self-report has lower causal strength'}[stype], delta:stypeDelta, fill:Math.max(0,(stypeDelta+8)/16), color:stypeDelta>=0?'var(--teal)':'var(--red)'},
+    {name:'Evidence quality', desc:{direct:'Direct observation = strongest evidence — behaviour over self-report',mixed:'Mix of observation and self-report — acceptable quality',self_report:'Self-report only — susceptible to social desirability and recall bias'}[eq], delta:eqDelta, fill:Math.max(0,(eqDelta+10)/18), color:eqDelta>=0?'var(--teal)':'var(--red)'},
+    {name:'Consistency across participants', desc:{high:'All or most participants showed the same pattern — high internal validity',medium:'Some variation observed — finding is probable but not definitive',low:'Mixed responses — finding may reflect heterogeneous user types'}[cons], delta:consDelta, fill:Math.max(0,(consDelta+12)/22), color:consDelta>=0?'var(--teal)':'var(--red)'},
+    {name:'Replication', desc:{yes:'Seen in a prior study — substantially increases credibility',partial:'Partially corroborated — some external support',no:'First observation — treat as a hypothesis until confirmed'}[rep], delta:repDelta, fill:Math.max(0,repDelta/12), color:repDelta>=0?'var(--teal)':'var(--red)'},
+  ];
+
+  const factorIcons = ['n','%','S','E','C','R'];
+  document.getElementById('factors').innerHTML = factors.map((f,i)=>`
+    <div class="factor">
+      <div class="factor-icon" style="background:var(--bg2);color:var(--t3)">${factorIcons[i]}</div>
+      <div class="factor-body">
+        <div class="factor-name">${f.name}</div>
+        <div class="factor-desc">${f.desc}</div>
+        <div class="factor-bar"><div class="factor-fill" style="width:${clamp(f.fill*100,0,100)}%;background:${f.color}"></div></div>
+      </div>
+      <div class="factor-delta ${f.delta>0?'positive':f.delta<0?'negative':'neutral-col'}">${f.delta>0?'+':''}${f.delta}</div>
+    </div>
+  `).join('');
+
+  const ctxLabel = pct+'% of participants ('+Math.round(p*n)+'/'+n+')';
+  const gradeMap = {80:'high',60:'moderate',40:'low',0:'very low'};
+  const gLabel = finalScore>=80?'high':finalScore>=60?'moderate':finalScore>=40?'low':'very low';
+
+  const stypeLabel = {formative:'formative usability study',summative:'summative benchmark study',diary:'diary study',survey:'survey'}[stype];
+  const repLabel = {yes:'This finding has been observed in prior research, which substantially increases confidence.',partial:'This finding partially aligns with prior research.',no:'This is the first time this finding has been observed — it should be treated as a hypothesis until replicated.'}[rep];
+  const consLabel = cons==='high'?'The pattern was consistent across participants.':cons==='medium'?'Some variation was observed across participants.':'Participants showed mixed responses, suggesting this may reflect diverse user types.';
+
+  const shText = `This finding has a ${gLabel} confidence score (${finalScore}/100). It was observed in a ${stypeLabel} with ${n} participants, ${ctxLabel} experiencing the issue. ${consLabel} ${repLabel} ${gLabel==='high'?'This finding is reliable enough to drive design decisions directly.':gLabel==='moderate'?'We recommend acting on this finding with awareness of its limitations.':'We recommend treating this as a signal to investigate further rather than a definitive conclusion.'}`;
+
+  document.getElementById('sh-text').textContent = shText;
+}
+
+function drawRing(score, color){
+  const canvas = document.getElementById('ring-chart');
+  const ctx = canvas.getContext('2d');
+  if(ringChart){ringChart.destroy();ringChart=null}
+  ringChart = new Chart(ctx,{
+    type:'doughnut',
+    data:{datasets:[{data:[score,100-score],backgroundColor:[color.replace('var(--','').replace(')','') in {'teal':'#1D9E75','purple':'#7F77DD','amber':'#BA7517','red':'#E24B4A'}?{'teal':'#1D9E75','purple':'#7F77DD','amber':'#BA7517','red':'#E24B4A'}[color.replace('var(--','').replace(')','')]:color, 'rgba(0,0,0,0.06)'],borderWidth:0,hoverOffset:0}]},
+    options:{responsive:false,cutout:'75%',plugins:{legend:{display:false},tooltip:{enabled:false}},animation:{duration:400}}
+  });
+}
+
+function copyText(){
+  navigator.clipboard.writeText(document.getElementById('sh-text').textContent);
+  const btn=document.querySelector('.copy-btn');btn.textContent='copied!';setTimeout(()=>btn.textContent='copy',1500);
+}
+
+render();
+</script>
+</body>
+</html>
